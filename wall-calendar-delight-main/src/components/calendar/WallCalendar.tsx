@@ -1,45 +1,112 @@
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Plus, X, CalendarDays } from "lucide-react";
-import { MONTH_NAMES, CalendarNote, loadNotes, saveNotes } from "@/lib/calendarUtils";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  X,
+  CalendarDays,
+  Settings,
+  Sun,
+  Moon,
+  Printer,
+  Search,
+  Grid3X3,
+} from "lucide-react";
+import {
+  MONTH_NAMES,
+  MONTH_NAMES_SHORT,
+  CalendarNote,
+  CalendarEvent,
+  CalendarSettings,
+  loadNotes,
+  saveNotes,
+  loadEvents,
+  saveEvents,
+  loadSettings,
+  saveSettings,
+  getHoliday,
+  getWeekNumber,
+  formatDateKey,
+} from "@/lib/calendarUtils";
 import heroImage from "@/assets/calendar-january.jpg";
+
+// For now using same image - you can add more images and import them here:
+// import heroFeb from "@/assets/calendar-february.jpg";
+// import heroMar from "@/assets/calendar-march.jpg";
+// etc.
+const MONTH_IMAGES = [
+  heroImage, // January
+  heroImage, // February
+  heroImage, // March
+  heroImage, // April
+  heroImage, // May
+  heroImage, // June
+  heroImage, // July
+  heroImage, // August
+  heroImage, // September
+  heroImage, // October
+  heroImage, // November
+  heroImage, // December
+];
+
+const ACCENT_COLORS = [
+  "#36a3ef", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
+];
 
 const WallCalendar = () => {
   const now = new Date();
+  const calendarRef = useRef<HTMLDivElement>(null);
+  
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [notes, setNotes] = useState<CalendarNote[]>(loadNotes);
+  const [events, setEvents] = useState<CalendarEvent[]>(loadEvents);
+  const [settings, setSettings] = useState<CalendarSettings>(loadSettings);
+  
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [showYearView, setShowYearView] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<{ year: number; month: number; day: number } | null>(null);
+  const [eventText, setEventText] = useState("");
 
   const today = now.getDate();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
   const isCurrentMonth = month === currentMonth && year === currentYear;
 
-  const goPrev = () => {
+  const goPrev = useCallback(() => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
     else setMonth(m => m - 1);
-  };
-  const goNext = () => {
+  }, [month]);
+
+  const goNext = useCallback(() => {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
     else setMonth(m => m + 1);
-  };
-  const goToday = () => {
-    setMonth(currentMonth);
-    setYear(currentYear);
-  };
+  }, [month]);
+
+  const goToday = () => { setMonth(currentMonth); setYear(currentYear); };
+  const goToMonth = (m: number, y: number) => { setMonth(m); setYear(y); setShowYearView(false); };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (showSettings || showSearch || selectedDay) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+      else if (e.key === "t" || e.key === "T") { e.preventDefault(); goToday(); }
+      else if (e.key === "y" || e.key === "Y") { e.preventDefault(); setShowYearView(v => !v); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [goPrev, goNext, showSettings, showSearch, selectedDay]);
 
   const handleAddNote = () => {
     if (!noteText.trim()) return;
-    const note: CalendarNote = {
-      id: crypto.randomUUID(),
-      text: noteText.trim(),
-      type: "month",
-      month,
-      year,
-      createdAt: new Date().toISOString(),
-    };
+    const note: CalendarNote = { id: crypto.randomUUID(), text: noteText.trim(), type: "month", month, year, createdAt: new Date().toISOString() };
     const updated = [...notes, note];
     setNotes(updated);
     saveNotes(updated);
@@ -47,162 +114,221 @@ const WallCalendar = () => {
     setIsAddingNote(false);
   };
 
-  const handleDeleteNote = (id: string) => {
-    const updated = notes.filter(n => n.id !== id);
-    setNotes(updated);
-    saveNotes(updated);
+  const handleDeleteNote = (id: string) => { const updated = notes.filter(n => n.id !== id); setNotes(updated); saveNotes(updated); };
+
+  const handleAddEvent = () => {
+    if (!eventText.trim() || !selectedDay) return;
+    const event: CalendarEvent = { id: crypto.randomUUID(), title: eventText.trim(), date: formatDateKey(selectedDay.year, selectedDay.month, selectedDay.day), color: settings.accentColor, createdAt: new Date().toISOString() };
+    const updated = [...events, event];
+    setEvents(updated);
+    saveEvents(updated);
+    setEventText("");
   };
 
-  const monthNotes = notes.filter(n => n.type === "month" && n.month === month && n.year === year);
+  const handleDeleteEvent = (id: string) => { const updated = events.filter(e => e.id !== id); setEvents(updated); saveEvents(updated); };
+  const updateSettings = (partial: Partial<CalendarSettings>) => { const updated = { ...settings, ...partial }; setSettings(updated); saveSettings(updated); };
+  const searchResults = useMemo(() => { if (!searchQuery.trim()) return []; const q = searchQuery.toLowerCase(); return notes.filter(n => n.text.toLowerCase().includes(q)); }, [notes, searchQuery]);
+  const handlePrint = () => { window.print(); };
 
-  const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+  const monthNotes = notes.filter(n => n.type === "month" && n.month === month && n.year === year);
+  const dayNames = settings.showWeekNumbers ? ["W", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] : ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
   const cells = useMemo(() => {
     const firstDay = new Date(year, month, 1).getDay();
     const mondayFirstOffset = firstDay === 0 ? 6 : firstDay - 1;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
-
-    const result: { day: number; currentMonth: boolean; isToday: boolean }[] = [];
-
+    const result: { day: number; currentMonth: boolean; isToday: boolean; holiday: string | null }[] = [];
     for (let i = mondayFirstOffset - 1; i >= 0; i--) {
-      result.push({ day: daysInPrevMonth - i, currentMonth: false, isToday: false });
+      const d = daysInPrevMonth - i;
+      const prevMonth = month === 0 ? 11 : month - 1;
+      const prevYear = month === 0 ? year - 1 : year;
+      result.push({ day: d, currentMonth: false, isToday: false, holiday: getHoliday(prevYear, prevMonth, d) });
     }
-
     for (let d = 1; d <= daysInMonth; d++) {
-      const isToday = isCurrentMonth && d === today;
-      result.push({ day: d, currentMonth: true, isToday });
+      result.push({ day: d, currentMonth: true, isToday: isCurrentMonth && d === today, holiday: getHoliday(year, month, d) });
     }
-
     let nextMonthDay = 1;
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
     while (result.length < 42) {
-      result.push({ day: nextMonthDay++, currentMonth: false, isToday: false });
+      result.push({ day: nextMonthDay, currentMonth: false, isToday: false, holiday: getHoliday(nextYear, nextMonth, nextMonthDay) });
+      nextMonthDay++;
     }
-
     return result;
   }, [year, month, isCurrentMonth, today]);
 
+  const getEventsForDay = (d: number, isCurrentMon: boolean) => {
+    if (!isCurrentMon) return [];
+    return events.filter(e => e.date === formatDateKey(year, month, d));
+  };
+
+  const accentColor = settings.accentColor;
+  const isDark = settings.darkMode;
+  const bgColor = isDark ? "bg-gray-900" : "bg-[#ececec]";
+  const cardBg = isDark ? "bg-gray-800" : "bg-white";
+  const textColor = isDark ? "text-gray-100" : "text-[#252525]";
+  const mutedText = isDark ? "text-gray-400" : "text-[#c6c6c6]";
+  const borderColor = isDark ? "border-gray-700" : "border-[#d5d5d5]";
+  const selectedDayEvents = selectedDay ? events.filter(e => e.date === formatDateKey(selectedDay.year, selectedDay.month, selectedDay.day)) : [];
+
   return (
-    <div className="min-h-screen bg-[#ececec] flex items-center justify-center px-4 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="relative w-[420px] sm:w-[500px]"
-      >
+    <div className={`min-h-screen ${bgColor} flex items-center justify-center px-4 py-12 transition-colors duration-300 print:bg-white print:p-0`}>
+      <motion.div ref={calendarRef} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: "easeOut" }} className="relative w-[420px] sm:w-[500px] print:w-full print:max-w-[500px]">
         {/* Top hanger */}
-        <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30">
+        <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 print:hidden">
           <svg width="96" height="68" viewBox="0 0 96 68" className="opacity-80">
-            <line x1="28" y1="67" x2="48" y2="22" stroke="#666" strokeWidth="1.1" />
-            <line x1="68" y1="67" x2="48" y2="22" stroke="#666" strokeWidth="1.1" />
-            <path d="M48 8 C45 8,43 10,43 13 C43 16,45 18,48 18 C51 18,53 16,53 13" fill="none" stroke="#666" strokeWidth="1.3" />
-            <circle cx="48" cy="20" r="2.2" fill="#777" />
+            <line x1="28" y1="67" x2="48" y2="22" stroke={isDark ? "#888" : "#666"} strokeWidth="1.1" />
+            <line x1="68" y1="67" x2="48" y2="22" stroke={isDark ? "#888" : "#666"} strokeWidth="1.1" />
+            <path d="M48 8 C45 8,43 10,43 13 C43 16,45 18,48 18 C51 18,53 16,53 13" fill="none" stroke={isDark ? "#888" : "#666"} strokeWidth="1.3" />
+            <circle cx="48" cy="20" r="2.2" fill={isDark ? "#999" : "#777"} />
           </svg>
         </div>
 
         {/* Spiral binding */}
-        <div className="absolute -top-[11px] left-0 right-0 z-20 flex justify-center">
-          <svg
-            viewBox="0 0 840 24"
-            className="w-[96%] h-[24px]"
-            style={{ filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.3))" }}
-          >
-            {Array.from({ length: 55 }, (_, i) => {
-              const cx = i * 15.2 + 7.6;
-              return (
-                <g key={i}>
-                  <ellipse
-                    cx={cx}
-                    cy={12}
-                    rx={3.8}
-                    ry={10.5}
-                    fill="none"
-                    stroke="#3a3a3a"
-                    strokeWidth="2"
-                  />
-                  <ellipse
-                    cx={cx}
-                    cy={12}
-                    rx={2.2}
-                    ry={9}
-                    fill="none"
-                    stroke="#787878"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                  />
-                </g>
-              );
-            })}
+        <div className="absolute -top-[11px] left-0 right-0 z-20 flex justify-center print:hidden">
+          <svg viewBox="0 0 840 24" className="w-[96%] h-[24px]" style={{ filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.3))" }}>
+            {Array.from({ length: 55 }, (_, i) => (
+              <g key={i}>
+                <ellipse cx={i * 15.2 + 7.6} cy={12} rx={3.8} ry={10.5} fill="none" stroke={isDark ? "#555" : "#3a3a3a"} strokeWidth="2" />
+                <ellipse cx={i * 15.2 + 7.6} cy={12} rx={2.2} ry={9} fill="none" stroke={isDark ? "#777" : "#787878"} strokeWidth="0.5" opacity="0.6" />
+              </g>
+            ))}
           </svg>
         </div>
 
-        {/* Calendar content */}
-        <div
-          className="bg-white overflow-hidden relative z-10"
-          style={{
-            boxShadow: "0 28px 50px -18px rgba(0,0,0,0.35), 0 10px 18px -10px rgba(0,0,0,0.25)",
-          }}
-        >
+        <div className={`${cardBg} overflow-hidden relative z-10 transition-colors duration-300`} style={{ boxShadow: "0 28px 50px -18px rgba(0,0,0,0.35), 0 10px 18px -10px rgba(0,0,0,0.25)" }}>
+          
+          {/* Year Overview Modal */}
+          <AnimatePresence>
+            {showYearView && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowYearView(false)}>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${cardBg} rounded-lg p-4 w-full max-w-md`} onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className={`font-bold ${textColor}`}>{year}</h3>
+                    <div className="flex gap-1">
+                      <button onClick={() => setYear(y => y - 1)} className={`p-1 rounded ${isDark ? "hover:bg-gray-700" : "hover:bg-gray-200"}`}><ChevronLeft className="w-4 h-4" /></button>
+                      <button onClick={() => setYear(y => y + 1)} className={`p-1 rounded ${isDark ? "hover:bg-gray-700" : "hover:bg-gray-200"}`}><ChevronRight className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {MONTH_NAMES_SHORT.map((m, idx) => (
+                      <button key={m} onClick={() => goToMonth(idx, year)} className={`py-2 px-1 rounded text-sm font-medium transition-colors ${idx === month ? "text-white" : idx === currentMonth && year === currentYear ? "font-bold" : ""} ${textColor}`} style={idx === month ? { backgroundColor: accentColor } : undefined}>{m}</button>
+                    ))}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Settings Panel */}
+          <AnimatePresence>
+            {showSettings && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${cardBg} rounded-lg p-4 w-full max-w-sm`} onClick={e => e.stopPropagation()}>
+                  <h3 className={`font-bold mb-4 ${textColor}`}>Settings</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`text-sm ${textColor}`}>Dark Mode</span>
+                    <button onClick={() => updateSettings({ darkMode: !settings.darkMode })} className={`p-2 rounded-full ${isDark ? "bg-gray-700" : "bg-gray-200"}`}>
+                      {isDark ? <Moon className="w-4 h-4 text-yellow-400" /> : <Sun className="w-4 h-4 text-orange-400" />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`text-sm ${textColor}`}>Show Week Numbers</span>
+                    <button onClick={() => updateSettings({ showWeekNumbers: !settings.showWeekNumbers })} className={`w-10 h-6 rounded-full transition-colors ${settings.showWeekNumbers ? "" : "bg-gray-300"}`} style={settings.showWeekNumbers ? { backgroundColor: accentColor } : undefined}>
+                      <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${settings.showWeekNumbers ? "translate-x-5" : "translate-x-1"}`} />
+                    </button>
+                  </div>
+                  <div className="mb-4">
+                    <span className={`text-sm ${textColor} block mb-2`}>Accent Color</span>
+                    <div className="flex gap-2 flex-wrap">
+                      {ACCENT_COLORS.map(color => (
+                        <button key={color} onClick={() => updateSettings({ accentColor: color })} className={`w-8 h-8 rounded-full border-2 ${accentColor === color ? "border-white ring-2" : "border-transparent"}`} style={{ backgroundColor: color, boxShadow: accentColor === color ? `0 0 0 2px ${color}` : undefined }} />
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => setShowSettings(false)} className="w-full py-2 rounded text-white font-medium" style={{ backgroundColor: accentColor }}>Done</button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Search Panel */}
+          <AnimatePresence>
+            {showSearch && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex items-start justify-center pt-10 p-4" onClick={() => { setShowSearch(false); setSearchQuery(""); }}>
+                <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className={`${cardBg} rounded-lg p-4 w-full max-w-sm`} onClick={e => e.stopPropagation()}>
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search notes..." className={`w-full text-sm px-3 py-2 rounded border ${borderColor} ${cardBg} ${textColor} focus:outline-none`} autoFocus />
+                  {searchResults.length > 0 && (
+                    <div className="mt-3 max-h-48 overflow-y-auto">
+                      {searchResults.map(note => (
+                        <button key={note.id} onClick={() => { if (note.month !== undefined && note.year !== undefined) { setMonth(note.month); setYear(note.year); } setShowSearch(false); setSearchQuery(""); }} className={`w-full text-left p-2 rounded text-sm ${textColor} ${isDark ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}>
+                          <span className="font-medium">{note.text}</span>
+                          <span className="text-xs ml-2 opacity-60">{note.month !== undefined ? MONTH_NAMES_SHORT[note.month] : ""} {note.year}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchQuery && searchResults.length === 0 && <p className={`mt-3 text-sm ${mutedText}`}>No notes found</p>}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Day Events Modal */}
+          <AnimatePresence>
+            {selectedDay && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => { setSelectedDay(null); setEventText(""); }}>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${cardBg} rounded-lg p-4 w-full max-w-sm`} onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className={`font-bold ${textColor}`}>{MONTH_NAMES[selectedDay.month]} {selectedDay.day}, {selectedDay.year}</h3>
+                    <button onClick={() => { setSelectedDay(null); setEventText(""); }}><X className="w-4 h-4" /></button>
+                  </div>
+                  {getHoliday(selectedDay.year, selectedDay.month, selectedDay.day) && (
+                    <div className="mb-3 px-2 py-1 rounded text-sm text-white" style={{ backgroundColor: accentColor }}>🎉 {getHoliday(selectedDay.year, selectedDay.month, selectedDay.day)}</div>
+                  )}
+                  <div className="flex gap-2 mb-3">
+                    <input value={eventText} onChange={e => setEventText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddEvent()} placeholder="Add event..." className={`flex-1 text-sm px-3 py-2 rounded border ${borderColor} ${cardBg} ${textColor} focus:outline-none`} />
+                    <button onClick={handleAddEvent} className="px-3 py-2 rounded text-white" style={{ backgroundColor: accentColor }}><Plus className="w-4 h-4" /></button>
+                  </div>
+                  {selectedDayEvents.length > 0 ? (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {selectedDayEvents.map(event => (
+                        <div key={event.id} className={`flex items-center justify-between p-2 rounded ${isDark ? "bg-gray-700" : "bg-gray-100"}`}>
+                          <span className={`text-sm ${textColor}`}>{event.title}</span>
+                          <button onClick={() => handleDeleteEvent(event.id)} className="text-red-500 text-sm">×</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className={`text-sm ${mutedText}`}>No events</p>}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Hero Image Section */}
           <div className="relative">
-            <motion.img
-              key={month}
-              initial={{ opacity: 0.92 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.25 }}
-              src={heroImage}
-              alt="Calendar hero"
-              className="w-full h-[320px] sm:h-[360px] object-cover"
-              width={1200}
-              height={800}
-            />
-            <svg
-              className="absolute bottom-0 left-0 w-full"
-              viewBox="0 0 500 120"
-              preserveAspectRatio="none"
-              style={{ height: "110px" }}
-            >
-              <path
-                d="M0 70 L200 120 L500 18 L500 120 L0 120 Z"
-                fill="#36a3ef"
-              />
-              <path d="M0 120 L135 120 L0 78 Z" fill="#ffffff" />
+            <motion.img key={month} initial={{ opacity: 0.9 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} src={MONTH_IMAGES[month]} alt="Calendar hero" className="w-full h-[320px] sm:h-[360px] object-cover" />
+            <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 500 120" preserveAspectRatio="none" style={{ height: "110px" }}>
+              <path d="M0 70 L200 120 L500 18 L500 120 L0 120 Z" fill={accentColor} />
+              <path d="M0 120 L135 120 L0 78 Z" fill={isDark ? "#1f2937" : "#ffffff"} />
             </svg>
-
             <div className="absolute right-7 bottom-7 text-right z-10 leading-none">
               <p className="text-white font-heading font-medium text-[30px] tracking-tight">{year}</p>
-              <p className="text-white font-heading font-extrabold text-[34px] uppercase tracking-tight">
-                {MONTH_NAMES[month]}
-              </p>
+              <p className="text-white font-heading font-extrabold text-[34px] uppercase tracking-tight">{MONTH_NAMES[month]}</p>
             </div>
-
-            {/* Month navigation arrows */}
-            <button
-              onClick={goPrev}
-              className="absolute top-1/2 left-3 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="w-5 h-5 text-gray-700" />
-            </button>
-            <button
-              onClick={goNext}
-              className="absolute top-1/2 right-3 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md"
-              aria-label="Next month"
-            >
-              <ChevronRight className="w-5 h-5 text-gray-700" />
-            </button>
-
-            {/* Jump to today button - only show when not on current month */}
+            {/* Top toolbar */}
+            <div className="absolute top-3 right-3 flex gap-1.5 z-10 print:hidden">
+              <button onClick={() => setShowSearch(true)} className="p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors shadow-md" title="Search notes"><Search className="w-4 h-4 text-gray-700" /></button>
+              <button onClick={() => setShowYearView(true)} className="p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors shadow-md" title="Year view (Y)"><Grid3X3 className="w-4 h-4 text-gray-700" /></button>
+              <button onClick={handlePrint} className="p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors shadow-md" title="Print"><Printer className="w-4 h-4 text-gray-700" /></button>
+              <button onClick={() => setShowSettings(true)} className="p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors shadow-md" title="Settings"><Settings className="w-4 h-4 text-gray-700" /></button>
+            </div>
+            <button onClick={goPrev} className="absolute top-1/2 left-3 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md print:hidden" aria-label="Previous month"><ChevronLeft className="w-5 h-5 text-gray-700" /></button>
+            <button onClick={goNext} className="absolute top-1/2 right-3 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md print:hidden" aria-label="Next month"><ChevronRight className="w-5 h-5 text-gray-700" /></button>
             {!isCurrentMonth && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onClick={goToday}
-                className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md flex items-center gap-1.5"
-                aria-label="Jump to today"
-              >
-                <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-[11px] font-medium text-gray-700">Today</span>
+              <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} onClick={goToday} className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md flex items-center gap-1.5 print:hidden" aria-label="Jump to today">
+                <CalendarDays className="w-3.5 h-3.5" style={{ color: accentColor }} /><span className="text-[11px] font-medium text-gray-700">Today</span>
               </motion.button>
             )}
           </div>
@@ -210,85 +336,75 @@ const WallCalendar = () => {
           {/* Notes and Calendar Grid */}
           <div className="px-5 pb-5 pt-4">
             <div className="grid grid-cols-[1.1fr_1.2fr] gap-5 items-start">
-              {/* Notes Section */}
               <div className="pt-1">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-[#4a4a4a]">Notes</p>
-                  <button
-                    onClick={() => setIsAddingNote(!isAddingNote)}
-                    className="text-gray-500 hover:text-blue-500 transition-colors"
-                  >
-                    {isAddingNote ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                  </button>
+                  <p className={`text-[11px] font-semibold ${isDark ? "text-gray-300" : "text-[#4a4a4a]"}`}>Notes</p>
+                  <button onClick={() => setIsAddingNote(!isAddingNote)} className="text-gray-500 hover:text-blue-500 transition-colors">{isAddingNote ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}</button>
                 </div>
-
                 {isAddingNote && (
                   <div className="mb-2">
-                    <input
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
-                      placeholder="Add note..."
-                      className="w-full text-[11px] px-2 py-1 border-b border-gray-300 bg-transparent focus:outline-none focus:border-blue-400"
-                      autoFocus
-                    />
+                    <input value={noteText} onChange={e => setNoteText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddNote()} placeholder="Add note..." className={`w-full text-[11px] px-2 py-1 border-b ${borderColor} bg-transparent focus:outline-none ${textColor}`} autoFocus />
                   </div>
                 )}
-
-                {monthNotes.slice(0, 10).map((note) => (
-                  <div
-                    key={note.id}
-                    className="h-[17px] border-b border-[#d5d5d5] flex items-center justify-between group"
-                  >
-                    <span className="text-[10px] text-gray-700 truncate">{note.text}</span>
-                    <button
-                      onClick={() => handleDeleteNote(note.id)}
-                      className="opacity-0 group-hover:opacity-100 text-red-500 text-[11px] ml-1"
-                    >
-                      ×
-                    </button>
+                {monthNotes.slice(0, 10).map(note => (
+                  <div key={note.id} className={`h-[17px] border-b ${borderColor} flex items-center justify-between group`}>
+                    <span className={`text-[10px] ${isDark ? "text-gray-300" : "text-gray-700"} truncate`}>{note.text}</span>
+                    <button onClick={() => handleDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-500 text-[11px] ml-1">×</button>
                   </div>
                 ))}
-
-                {Array.from({ length: Math.max(0, 10 - monthNotes.length) }, (_, i) => (
-                  <div key={`empty-${i}`} className="h-[17px] border-b border-[#d5d5d5]" />
-                ))}
+                {Array.from({ length: Math.max(0, 10 - monthNotes.length) }, (_, i) => (<div key={`empty-${i}`} className={`h-[17px] border-b ${borderColor}`} />))}
               </div>
 
-              {/* Calendar Grid */}
               <div className="min-w-0">
-                <div className="grid grid-cols-7 text-[10px] mb-2">
+                <div className={`grid ${settings.showWeekNumbers ? "grid-cols-8" : "grid-cols-7"} text-[10px] mb-2`}>
                   {dayNames.map((name, idx) => (
-                    <div
-                      key={name}
-                      className={`text-center font-semibold ${idx >= 5 ? "text-[#48a8ee]" : "text-[#525252]"}`}
-                    >
-                      {name}
-                    </div>
+                    <div key={name} className={`text-center font-semibold ${settings.showWeekNumbers && idx === 0 ? mutedText : (settings.showWeekNumbers ? idx >= 6 : idx >= 5) ? "" : isDark ? "text-gray-300" : "text-[#525252]"}`} style={(settings.showWeekNumbers ? idx >= 6 : idx >= 5) ? { color: accentColor } : undefined}>{name}</div>
                   ))}
                 </div>
-                <div className="grid grid-cols-7 gap-y-[2px]">
-                  {cells.map((cell, index) => (
-                    <button
-                      key={`${index}-${cell.day}`}
-                      onClick={index < 7 ? goPrev : index > 34 ? goNext : undefined}
-                      className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold relative ${
-                        cell.currentMonth ? "text-[#252525]" : "text-[#c6c6c6]"
-                      } ${index % 7 >= 5 && cell.currentMonth ? "text-[#4faeed]" : ""} ${
-                        cell.isToday ? "text-white" : ""
-                      }`}
-                    >
-                      {cell.isToday && (
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <span className="w-[18px] h-[18px] rounded-full bg-[#36a3ef] absolute" />
-                        </span>
-                      )}
-                      <span className="relative z-10">{cell.day}</span>
-                    </button>
-                  ))}
+                <div className={`grid ${settings.showWeekNumbers ? "grid-cols-8" : "grid-cols-7"} gap-y-[2px]`}>
+                  {cells.map((cell, index) => {
+                    const dayEvents = getEventsForDay(cell.day, cell.currentMonth);
+                    const hasEvents = dayEvents.length > 0;
+                    if (settings.showWeekNumbers && index % 7 === 0) {
+                      const weekNum = getWeekNumber(cell.currentMonth ? year : (index < 7 ? (month === 0 ? year - 1 : year) : (month === 11 ? year + 1 : year)), cell.currentMonth ? month : (index < 7 ? (month === 0 ? 11 : month - 1) : (month === 11 ? 0 : month + 1)), cell.day);
+                      return (
+                        <React.Fragment key={`week-${index}`}>
+                          <div className={`h-[18px] text-center text-[9px] leading-[18px] ${mutedText}`}>{weekNum}</div>
+                          <button onClick={() => cell.currentMonth && setSelectedDay({ year, month, day: cell.day })} className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold relative ${cell.currentMonth ? textColor : mutedText} ${cell.isToday ? "text-white" : ""}`} style={(index % 7) + 1 >= 6 && cell.currentMonth && !cell.isToday ? { color: accentColor } : undefined}>
+                            {cell.isToday && <span className="absolute inset-0 flex items-center justify-center"><span className="w-[18px] h-[18px] rounded-full absolute" style={{ backgroundColor: accentColor }} /></span>}
+                            {cell.holiday && cell.currentMonth && !cell.isToday && <span className="absolute -top-0.5 right-0 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                            {hasEvents && !cell.isToday && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ backgroundColor: accentColor }} />}
+                            <span className="relative z-10">{cell.day}</span>
+                          </button>
+                        </React.Fragment>
+                      );
+                    }
+                    if (settings.showWeekNumbers) {
+                      return (
+                        <button key={`${index}-${cell.day}`} onClick={() => cell.currentMonth && setSelectedDay({ year, month, day: cell.day })} className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold relative ${cell.currentMonth ? textColor : mutedText} ${cell.isToday ? "text-white" : ""}`} style={(index % 7) + 1 >= 6 && cell.currentMonth && !cell.isToday ? { color: accentColor } : undefined}>
+                          {cell.isToday && <span className="absolute inset-0 flex items-center justify-center"><span className="w-[18px] h-[18px] rounded-full absolute" style={{ backgroundColor: accentColor }} /></span>}
+                          {cell.holiday && cell.currentMonth && !cell.isToday && <span className="absolute -top-0.5 right-0 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                          {hasEvents && !cell.isToday && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ backgroundColor: accentColor }} />}
+                          <span className="relative z-10">{cell.day}</span>
+                        </button>
+                      );
+                    }
+                    return (
+                      <button key={`${index}-${cell.day}`} onClick={() => cell.currentMonth && setSelectedDay({ year, month, day: cell.day })} className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold relative ${cell.currentMonth ? textColor : mutedText} ${cell.isToday ? "text-white" : ""}`} style={index % 7 >= 5 && cell.currentMonth && !cell.isToday ? { color: accentColor } : undefined}>
+                        {cell.isToday && <span className="absolute inset-0 flex items-center justify-center"><span className="w-[18px] h-[18px] rounded-full absolute" style={{ backgroundColor: accentColor }} /></span>}
+                        {cell.holiday && cell.currentMonth && !cell.isToday && <span className="absolute -top-0.5 right-0 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                        {hasEvents && !cell.isToday && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ backgroundColor: accentColor }} />}
+                        <span className="relative z-10">{cell.day}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className={`px-5 pb-3 text-[9px] ${mutedText} flex gap-3 print:hidden`}>
+            <span>← → Navigate</span><span>T Today</span><span>Y Year</span>
           </div>
         </div>
       </motion.div>
