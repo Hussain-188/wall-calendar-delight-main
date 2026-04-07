@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, CalendarDays } from "lucide-react";
 import { MONTH_NAMES, CalendarNote, loadNotes, saveNotes } from "@/lib/calendarUtils";
 import heroImage from "@/assets/calendar-january.jpg";
 
@@ -12,6 +12,11 @@ const WallCalendar = () => {
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [noteText, setNoteText] = useState("");
 
+  const today = now.getDate();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const isCurrentMonth = month === currentMonth && year === currentYear;
+
   const goPrev = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
     else setMonth(m => m - 1);
@@ -19,6 +24,10 @@ const WallCalendar = () => {
   const goNext = () => {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
     else setMonth(m => m + 1);
+  };
+  const goToday = () => {
+    setMonth(currentMonth);
+    setYear(currentYear);
   };
 
   const handleAddNote = () => {
@@ -54,23 +63,24 @@ const WallCalendar = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
 
-    const result: { day: number; currentMonth: boolean }[] = [];
+    const result: { day: number; currentMonth: boolean; isToday: boolean }[] = [];
 
     for (let i = mondayFirstOffset - 1; i >= 0; i--) {
-      result.push({ day: daysInPrevMonth - i, currentMonth: false });
+      result.push({ day: daysInPrevMonth - i, currentMonth: false, isToday: false });
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
-      result.push({ day: d, currentMonth: true });
+      const isToday = isCurrentMonth && d === today;
+      result.push({ day: d, currentMonth: true, isToday });
     }
 
     let nextMonthDay = 1;
     while (result.length < 42) {
-      result.push({ day: nextMonthDay++, currentMonth: false });
+      result.push({ day: nextMonthDay++, currentMonth: false, isToday: false });
     }
 
     return result;
-  }, [year, month]);
+  }, [year, month, isCurrentMonth, today]);
 
   return (
     <div className="min-h-screen bg-[#ececec] flex items-center justify-center px-4 py-12">
@@ -181,6 +191,20 @@ const WallCalendar = () => {
             >
               <ChevronRight className="w-5 h-5 text-gray-700" />
             </button>
+
+            {/* Jump to today button - only show when not on current month */}
+            {!isCurrentMonth && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={goToday}
+                className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white transition-colors z-10 shadow-md flex items-center gap-1.5"
+                aria-label="Jump to today"
+              >
+                <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[11px] font-medium text-gray-700">Today</span>
+              </motion.button>
+            )}
           </div>
 
           {/* Notes and Calendar Grid */}
@@ -248,11 +272,18 @@ const WallCalendar = () => {
                     <button
                       key={`${index}-${cell.day}`}
                       onClick={index < 7 ? goPrev : index > 34 ? goNext : undefined}
-                      className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold ${
+                      className={`h-[18px] text-center text-[12px] leading-[18px] font-semibold relative ${
                         cell.currentMonth ? "text-[#252525]" : "text-[#c6c6c6]"
-                      } ${index % 7 >= 5 && cell.currentMonth ? "text-[#4faeed]" : ""}`}
+                      } ${index % 7 >= 5 && cell.currentMonth ? "text-[#4faeed]" : ""} ${
+                        cell.isToday ? "text-white" : ""
+                      }`}
                     >
-                      {cell.day}
+                      {cell.isToday && (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="w-[18px] h-[18px] rounded-full bg-[#36a3ef] absolute" />
+                        </span>
+                      )}
+                      <span className="relative z-10">{cell.day}</span>
                     </button>
                   ))}
                 </div>
