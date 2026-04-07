@@ -310,8 +310,8 @@ const WallCalendar = () => {
           <div className="relative">
             <motion.img key={month} initial={{ opacity: 0.9 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} src={MONTH_IMAGES[month]} alt="Calendar hero" className="w-full h-[320px] sm:h-[360px] object-cover" />
             <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 500 120" preserveAspectRatio="none" style={{ height: "110px" }}>
-              <path d="M0 70 L200 120 L500 18 L500 120 L0 120 Z" fill={accentColor} />
-              <path d="M0 120 L135 120 L0 78 Z" fill={isDark ? "#1f2937" : "#ffffff"} />
+              {/* Smooth curved blue overlay - fills entire bottom */}
+              <path d="M0 55 Q100 95 200 110 Q350 130 500 25 L500 120 L0 120 Z" fill={accentColor} />
             </svg>
             <div className="absolute right-7 bottom-7 text-right z-10 leading-none">
               <p className="text-white font-heading font-medium text-[30px] tracking-tight">{year}</p>
@@ -332,6 +332,9 @@ const WallCalendar = () => {
               </motion.button>
             )}
           </div>
+
+          {/* Blue bar extending below the curved overlay */}
+          <div className="h-3" style={{ backgroundColor: accentColor }}></div>
 
           {/* Notes and Calendar Grid */}
           <div className="px-5 pb-5 pt-4">
